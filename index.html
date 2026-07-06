@@ -9,7 +9,7 @@
     - 6章「変更してはいけない部分」/ 7章「チューニング早見表」が特に重要
 
   ファイル内の地図：
-    <style>  … 文字色のCSS変数(--ink-*) / フェード(.fade) / 3段階テキスト表示
+    <style>  … 文字色のCSS変数(--ink-*) / フェード(.fade) / 2段階テキスト表示
     <body>   … ヘッダー / ツール(♪・text) / シーン切替(.tod) / 各セクション
     <script> … VERT・FRAG(シェーダー本体) / PAL(シーン別パラメータ=一番いじる場所)
                / WebGL初期化 / 入力処理 / ページ送りスクロール / BGM
@@ -57,6 +57,15 @@
     --cta-bg: rgba(255,255,255,.05);
     --veil: #0b1220;
   }
+  [data-tod="evening"]{
+    --ink-strong: rgba(255,252,246,.76);
+    --ink: rgba(250,247,242,.72);
+    --ink-soft: rgba(240,238,232,.70);
+    --ink-faint: rgba(230,226,218,.56);
+    --cta-ink: rgba(250,247,242,.74);
+    --cta-border: rgba(255,246,235,.30);
+    --cta-bg: rgba(80,48,58,.08);
+  }
   [data-tod="ikai"]{
     --ink-strong: rgba(245,242,252,.60);
     --ink: rgba(234,230,247,.66);
@@ -70,6 +79,9 @@
   /* keep text legible over the otherworld's bright pools of light */
   [data-tod="ikai"] main, [data-tod="ikai"] .tod button{
     text-shadow: 0 0 8px rgba(10,12,42,.9), 0 1px 22px rgba(10,12,42,.8), 0 0 52px rgba(10,12,42,.55);
+  }
+  [data-tod="evening"] main, [data-tod="evening"] header, [data-tod="evening"] .tod button, [data-tod="evening"] .tool{
+    text-shadow: 0 0 18px rgba(80,42,52,.40), 0 1px 32px rgba(68,38,48,.26);
   }
   *{ margin:0; padding:0; box-sizing:border-box; }
   html{ scroll-behavior:auto; }
@@ -221,27 +233,10 @@
   .tool.on{ opacity:1; color: var(--ink-strong); }
   .tool.on::after{ transform: scaleX(1); }
 
-  /* ---------- text visibility: on / min / off ---------- */
+  /* ---------- text visibility: on / off ---------- */
   header, main, .tod, nav, section, footer{ transition: opacity 3s ease; }
-  /* min: only the logo, the headline, and the scene remain */
-  body.ui-min nav,
-  body.ui-min .hero .lede,
-  body.ui-min .hero .cta,
-  body.ui-min .hint, body.no-ui .hint{ animation: none; }
-  body.ui-min nav,
-  body.ui-min .hero .lede,
-  body.ui-min .hero .cta,
-  body.ui-min .hint,
-  body.ui-min .vtext p:not(.big),
-  body.ui-min .step .no,
-  body.ui-min .step p,
-  body.ui-min .outro p,
-  body.ui-min footer .copy{
-    opacity: 0;
-    pointer-events: none;
-  }
-  body.ui-min .label::after{ opacity: 0; }
   /* off: nothing but sky and water */
+  body.no-ui .hint{ animation: none; }
   body.no-ui header, body.no-ui main, body.no-ui .tod{
     opacity: 0;
     pointer-events: none;
@@ -444,18 +439,22 @@
   }
 
   /* ---------- scroll reveal (+ tod color crossfade) ----------
-     everything breathes slowly: text condenses out of the mist */
+     keep the reveal soft without animating blur, which can stutter on phones */
   .fade{
     opacity: 0;
-    transform: translateY(18px);
-    filter: blur(14px);
+    transform: translate3d(0, 20px, 0) scale(.998);
+    filter: none;
+    backface-visibility: hidden;
+    will-change: opacity, transform;
     transition:
-      opacity 4.5s cubic-bezier(.16,.5,.3,1),
-      transform 4.5s cubic-bezier(.16,.5,.3,1),
-      filter 4.5s cubic-bezier(.16,.5,.3,1),
+      opacity 6.4s cubic-bezier(.16,.58,.18,1),
+      transform 6.4s cubic-bezier(.16,.58,.18,1),
       color 3s ease, border-color 3s ease, background-color 3s ease;
   }
-  .fade.in{ opacity: 1; transform: none; filter: blur(0); }
+  .fade.in{
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
 
   @media (max-width: 640px){
     html{
@@ -611,8 +610,7 @@
       letter-spacing: .18em;
     }
     .fade{
-      transform: translateY(10px);
-      filter: blur(8px);
+      transform: translate3d(0, 12px, 0) scale(.999);
     }
   }
   @media (prefers-reduced-motion: reduce){
@@ -639,7 +637,7 @@
 
 <div class="tools">
   <button class="tool" id="bgmBtn" type="button" aria-pressed="false" title="BGMをながす / とめる">♪ off</button>
-  <button class="tool on" id="uiBtn" type="button" title="文字の表示（すべて / 最小限 / なし）">text on</button>
+  <button class="tool on" id="uiBtn" type="button" aria-pressed="true" title="文字の表示（すべて / なし）">text on</button>
 </div>
 <audio id="bgm" src="bgm.mp3" loop preload="auto"></audio>
 
@@ -1220,7 +1218,7 @@
 
   /* --------------------------------------------------------------------------
      ページ送りスクロール（PC・幅641px以上のみ）:
-     wheel を乗っ取り、1回で次/前のセクションへ 1.6秒(dur=1600)かけて移動。
+     wheel を乗っ取り、1回で次/前のセクションへ 2.8秒(dur=2800)かけて移動。
      モバイルはネイティブスクロール＋CSSスナップ。セクション追加時は SECTS へ。
      -------------------------------------------------------------------------- */
   var SECTS = ['.hero', '#concept', '#experience', '#outro', 'footer']
@@ -1231,10 +1229,10 @@
     y = Math.max(0, Math.min(y, document.documentElement.scrollHeight - innerHeight));
     if(reduced){ window.scrollTo(0, y); return; }
     gliding = true;
-    var start = scrollY, dist = y - start, t0 = performance.now(), dur = 1600;
+    var start = scrollY, dist = y - start, t0 = performance.now(), dur = 2800;
     function step(nowT){
       var p = Math.min((nowT - t0) / dur, 1);
-      var e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      var e = 0.5 - 0.5 * Math.cos(Math.PI * p);
       window.scrollTo(0, start + dist * e);
       if(p < 1){ requestAnimationFrame(step); }
       else { setTimeout(function(){ gliding = false; }, 80); }
@@ -1268,15 +1266,15 @@
     });
   });
 
-  /* ---------- text visibility: on → min → off → on ---------- */
+  /* ---------- text visibility: on → off → on ---------- */
   var uiBtn = document.getElementById('uiBtn');
-  var uiState = 0; // 0: everything, 1: bare minimum, 2: nothing
+  var uiHidden = false;
   uiBtn.addEventListener('click', function(){
-    uiState = (uiState + 1) % 3;
-    document.body.classList.toggle('ui-min', uiState === 1);
-    document.body.classList.toggle('no-ui', uiState === 2);
-    uiBtn.textContent = uiState === 0 ? 'text on' : (uiState === 1 ? 'text min' : 'text off');
-    uiBtn.classList.toggle('on', uiState === 0);
+    uiHidden = !uiHidden;
+    document.body.classList.toggle('no-ui', uiHidden);
+    uiBtn.textContent = uiHidden ? 'text off' : 'text on';
+    uiBtn.classList.toggle('on', !uiHidden);
+    uiBtn.setAttribute('aria-pressed', String(!uiHidden));
   });
 
   if(gl && setup()){
@@ -1384,11 +1382,13 @@
   var io = new IntersectionObserver(function(entries){
     entries.forEach(function(en){
       if(en.isIntersecting){
-        en.target.classList.add('in');
+        requestAnimationFrame(function(){
+          en.target.classList.add('in');
+        });
         io.unobserve(en.target);
       }
     });
-  }, { threshold: 0.25 });
+  }, { threshold: 0.16, rootMargin: '0px 0px -2% 0px' });
   document.querySelectorAll('.fade').forEach(function(el){ io.observe(el); });
 })();
 </script>
