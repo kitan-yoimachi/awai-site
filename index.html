@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  AWAI（あわい）— 空と水のインタラクティブ・ランドスケープ
+  ============================================================================
+  ・意図的に「単一ファイル」構成（HTML + CSS + JS + GLSL すべてこのファイル）
+  ・背景はすべて WebGL シェーダーによるプロシージャル生成（画像アセットなし）
+  ・編集前に必ず同フォルダの README.md を読むこと
+    - 6章「変更してはいけない部分」/ 7章「チューニング早見表」が特に重要
+
+  ファイル内の地図：
+    <style>  … 文字色のCSS変数(--ink-*) / フェード(.fade) / 3段階テキスト表示
+    <body>   … ヘッダー / ツール(♪・text) / シーン切替(.tod) / 各セクション
+    <script> … VERT・FRAG(シェーダー本体) / PAL(シーン別パラメータ=一番いじる場所)
+               / WebGL初期化 / 入力処理 / ページ送りスクロール / BGM
+  ============================================================================
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>あわい | AWAI — 空と水の、あわいへ。</title>
+<meta name="description" content="空と水面の境界が溶ける、静かなインタラクティブ・ランドスケープ。ふれた場所から、まるい波紋がひかりをまとってひろがります。朝・昼・夕・夜、そして異界の景色を。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@400;500&family=Zen+Kaku+Gothic+New:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink-strong: rgba(40,68,94,.60);
+    --ink: rgba(47,76,102,.68);
+    --ink-soft: rgba(80,110,136,.70);
+    --ink-faint: rgba(120,145,166,.52);
+    --cta-ink: rgba(56,88,114,.68);
+    --cta-border: rgba(75,110,140,.32);
+    --cta-bg: rgba(255,255,255,.10);
+    --white: rgba(255,255,255,.78);
+    --veil: #eaf2f7;
+    --serif: "Shippori Mincho B1", "Hiragino Mincho ProN", serif;
+    --sans: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", sans-serif;
+  }
+  [data-tod="night"]{
+    --ink-strong: rgba(237,244,250,.58);
+    --ink: rgba(220,233,244,.64);
+    --ink-soft: rgba(165,188,208,.66);
+    --ink-faint: rgba(126,150,172,.48);
+    --cta-ink: rgba(219,233,244,.68);
+    --cta-border: rgba(215,232,246,.28);
+    --cta-bg: rgba(255,255,255,.05);
+    --veil: #0b1220;
+  }
+  [data-tod="ikai"]{
+    --ink-strong: rgba(245,242,252,.60);
+    --ink: rgba(234,230,247,.66);
+    --ink-soft: rgba(217,211,238,.68);
+    --ink-faint: rgba(154,146,189,.50);
+    --cta-ink: rgba(239,233,248,.70);
+    --cta-border: rgba(236,228,250,.32);
+    --cta-bg: rgba(30,26,70,.14);
+    --veil: #0d1026;
+  }
+  /* keep text legible over the otherworld's bright pools of light */
+  [data-tod="ikai"] main, [data-tod="ikai"] .tod button{
+    text-shadow: 0 0 8px rgba(10,12,42,.9), 0 1px 22px rgba(10,12,42,.8), 0 0 52px rgba(10,12,42,.55);
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html{ scroll-behavior:auto; }
+  /* sections settle cleanly — no stopping halfway (touch/scrollbar; wheel is paged by JS) */
+  @media (min-width: 641px){
+    html{ scroll-snap-type: y mandatory; }
+    section{ scroll-snap-align: start; scroll-snap-stop: always; }
+    footer{ scroll-snap-align: end; }
+  }
+  @media (max-width: 640px){
+    html{ scroll-snap-type: y proximity; }
+    section{ scroll-snap-align: start; }
+  }
+  body{
+    font-family: var(--sans);
+    color: var(--ink);
+    overflow-x: hidden;
+    background: #bcd3e4; /* canvas fallback */
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection{ background: rgba(255,255,255,.55); color:#29465f; }
+
+  #sea{
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    display: block;
+  }
+
+  /* ---------- intro veil ---------- */
+  #veil{
+    position: fixed; inset: 0; z-index: 50;
+    background: var(--veil);
+    transition: opacity 4s ease;
+    pointer-events: none;
+  }
+  #veil.gone{ opacity: 0; }
+
+  /* ---------- header ---------- */
+  header{
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: clamp(1.4rem, 3vw, 2.4rem) clamp(1.4rem, 5vw, 4rem);
+  }
+  .logo{
+    font-family: var(--serif);
+    color: var(--white);
+    font-size: 1.05rem;
+    letter-spacing: .55em;
+    text-decoration: none;
+    text-shadow: 0 0 24px rgba(90,130,170,.35);
+  }
+  .logo small{
+    display: block;
+    font-family: var(--sans);
+    font-weight: 300;
+    font-size: .58rem;
+    letter-spacing: .5em;
+    margin-top: .45em;
+    opacity: .75;
+  }
+  nav{ display: flex; gap: clamp(1.4rem, 3vw, 2.8rem); }
+  nav a{
+    color: var(--white);
+    text-decoration: none;
+    font-size: .78rem;
+    font-weight: 400;
+    letter-spacing: .22em;
+    text-shadow: 0 0 20px rgba(90,130,170,.35);
+    transition: opacity .4s ease;
+  }
+  nav a span{
+    display:block; text-align:center;
+    font-size:.56rem; letter-spacing:.3em; opacity:.6; margin-top:.35em;
+  }
+  nav a:hover{ opacity:.65; }
+
+  /* ---------- time-of-day switcher ---------- */
+  .tod{
+    position: fixed;
+    right: clamp(1.1rem, 3vw, 2.4rem);
+    bottom: clamp(1.2rem, 4vh, 2.4rem);
+    z-index: 25;
+    display: flex;
+    align-items: flex-end;
+    gap: clamp(.8rem, 1.8vw, 1.3rem);
+  }
+  .tod button{
+    appearance: none;
+    background: none; border: none;
+    cursor: pointer;
+    font-family: var(--sans);
+    font-weight: 400;
+    font-size: .74rem;
+    letter-spacing: .2em;
+    color: var(--ink-soft);
+    opacity: .6;
+    padding: .35em .15em;
+    transition: opacity 1.2s ease, color 3s ease;
+    white-space: nowrap;
+  }
+  .tod button::after{
+    content:"";
+    display:block;
+    height:1px;
+    margin-top:.45em;
+    background: currentColor;
+    transform: scaleX(0);
+    transition: transform .6s ease;
+  }
+  .tod button:hover{ opacity:.95; }
+  .tod button.on{ opacity:1; color: var(--ink-strong); }
+  .tod button.on::after{ transform: scaleX(1); }
+
+  /* ---------- bottom-left tools: bgm & text visibility ---------- */
+  .tools{
+    position: fixed;
+    left: clamp(1.1rem, 3vw, 2.4rem);
+    bottom: clamp(1.2rem, 4vh, 2.4rem);
+    z-index: 26;
+    display: flex;
+    gap: clamp(.9rem, 2vw, 1.4rem);
+  }
+  .tool{
+    appearance: none;
+    background: none; border: none;
+    cursor: pointer;
+    font-family: var(--sans);
+    font-weight: 400;
+    font-size: .74rem;
+    letter-spacing: .2em;
+    color: var(--ink-soft);
+    opacity: .6;
+    padding: .35em .15em;
+    transition: opacity 1.2s ease, color 3s ease;
+    white-space: nowrap;
+  }
+  .tool::after{
+    content:"";
+    display:block;
+    height:1px;
+    margin-top:.45em;
+    background: currentColor;
+    transform: scaleX(0);
+    transition: transform 1.2s ease;
+  }
+  .tool:hover{ opacity:.95; }
+  .tool.on{ opacity:1; color: var(--ink-strong); }
+  .tool.on::after{ transform: scaleX(1); }
+
+  /* ---------- text visibility: on / min / off ---------- */
+  header, main, .tod, nav, section, footer{ transition: opacity 3s ease; }
+  /* min: only the logo, the headline, and the scene remain */
+  body.ui-min nav,
+  body.ui-min .hero .lede,
+  body.ui-min .hero .cta,
+  body.ui-min .hint, body.no-ui .hint{ animation: none; }
+  body.ui-min .hint,
+  body.ui-min .concept,
+  body.ui-min .experience,
+  body.ui-min .outro,
+  body.ui-min footer{
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* off: nothing but sky and water */
+  body.no-ui header, body.no-ui main, body.no-ui .tod{
+    opacity: 0;
+    pointer-events: none;
+  }
+  body.no-ui .tools{ opacity: .8; }
+
+  main{ position: relative; z-index: 10; }
+  section{ position: relative; }
+
+  /* ---------- hero ---------- */
+  .hero{
+    min-height: 100svh;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 0 clamp(1.4rem, 8vw, 7.5rem);
+  }
+  .hero h1{
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(2.3rem, 5.6vw, 4.6rem);
+    line-height: 1.55;
+    letter-spacing: .1em;
+    color: var(--ink-strong);
+  }
+  .hero .lede{
+    margin-top: clamp(1.6rem, 3vw, 2.6rem);
+    font-weight: 300;
+    font-size: clamp(.85rem, 1.35vw, 1.02rem);
+    line-height: 2.3;
+    letter-spacing: .14em;
+    color: var(--ink-soft);
+  }
+  .hero .cta{
+    margin-top: clamp(2.2rem, 4.5vw, 3.6rem);
+    align-self: flex-start;
+    display: inline-block;
+    font-family: var(--sans);
+    font-size: .8rem;
+    letter-spacing: .34em;
+    text-indent: .34em;
+    color: var(--cta-ink);
+    text-decoration: none;
+    padding: 1.05em 2.6em;
+    border: 1px solid var(--cta-border);
+    background: var(--cta-bg);
+    backdrop-filter: blur(2px);
+    cursor: pointer;
+    transition: background 1.4s ease, border-color 3s ease, color 3s ease;
+  }
+  .hero .cta:hover{
+    background: rgba(255,255,255,.28);
+  }
+  .hint{
+    position: absolute;
+    bottom: clamp(1.6rem, 4vh, 3rem);
+    left: 50%; transform: translateX(-50%);
+    font-size: .68rem;
+    letter-spacing: .3em;
+    text-indent: .3em;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    animation: breathe 8s ease-in-out infinite;
+    transition: color 3s ease;
+  }
+  @keyframes breathe{
+    0%,100%{ opacity:.25; } 50%{ opacity:.7; }
+  }
+
+  /* ---------- shared section chrome ---------- */
+  .label{
+    font-size: .66rem;
+    letter-spacing: .5em;
+    text-indent: .5em;
+    color: var(--ink-faint);
+    text-align: center;
+  }
+  .label::after{
+    content:"";
+    display:block;
+    width:1px; height:3.2em;
+    margin: 1.6em auto 0;
+    background: linear-gradient(to bottom, currentColor, transparent);
+    opacity: .5;
+  }
+
+  /* ---------- concept ---------- */
+  .concept{
+    min-height: 100svh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 18vh 1.5rem;
+    text-align: center;
+  }
+  .vtext{
+    margin-top: clamp(2.5rem, 6vh, 4.5rem);
+    writing-mode: vertical-rl;
+    max-height: min(64svh, 560px);
+    font-family: var(--serif);
+    font-size: clamp(.95rem, 1.6vw, 1.15rem);
+    line-height: 3.1;
+    letter-spacing: .32em;
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+  }
+  .vtext p + p{ margin-right: .5em; }
+  .vtext .big{
+    font-size: clamp(1.5rem, 2.6vw, 2rem);
+    letter-spacing: .4em;
+    margin-left: 1.6em;
+    color: var(--ink-strong);
+  }
+
+  /* ---------- experience ---------- */
+  .experience{
+    min-height: 100svh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 18vh 1.5rem;
+  }
+  .steps{
+    margin-top: clamp(3rem, 8vh, 5.5rem);
+    display: flex;
+    gap: clamp(2.5rem, 7vw, 7rem);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .step{ text-align: center; max-width: 15rem; }
+  .step .no{
+    font-family: var(--serif);
+    font-size: .72rem;
+    letter-spacing: .4em;
+    text-indent: .4em;
+    color: var(--ink-faint);
+  }
+  .step h3{
+    margin-top: 1.3em;
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(1.35rem, 2.2vw, 1.7rem);
+    letter-spacing: .3em;
+    text-indent: .3em;
+    color: var(--ink-strong);
+  }
+  .step p{
+    margin-top: 1.6em;
+    font-weight: 300;
+    font-size: .82rem;
+    line-height: 2.3;
+    letter-spacing: .12em;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- outro / footer ---------- */
+  .outro{
+    min-height: 88svh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 4rem 1.5rem 0;
+  }
+  .outro h2{
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(1.6rem, 3.4vw, 2.7rem);
+    letter-spacing: .24em;
+    text-indent: .24em;
+    line-height: 2;
+    color: var(--ink-strong);
+  }
+  .outro p{
+    margin-top: 2.4em;
+    font-size: .78rem;
+    letter-spacing: .2em;
+    line-height: 2.4;
+    font-weight: 300;
+    color: var(--ink-soft);
+  }
+  footer{
+    /* extra bottom room so the fixed switcher / bgm toggle never covers the text */
+    padding: 3.5rem 1.5rem 10rem;
+    text-align: center;
+  }
+  footer .mark{
+    font-family: var(--serif);
+    letter-spacing: .55em;
+    text-indent: .55em;
+    font-size: .9rem;
+    color: var(--ink);
+    transition: color 3s ease;
+  }
+  footer .copy{
+    margin-top: 1.6em;
+    font-size: .62rem;
+    letter-spacing: .28em;
+    color: var(--ink-faint);
+    transition: color 3s ease;
+  }
+
+  /* ---------- scroll reveal (+ tod color crossfade) ----------
+     everything breathes slowly: text condenses out of the mist */
+  .fade{
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(14px);
+    transition:
+      opacity 4.5s cubic-bezier(.16,.5,.3,1),
+      transform 4.5s cubic-bezier(.16,.5,.3,1),
+      filter 4.5s cubic-bezier(.16,.5,.3,1),
+      color 3s ease, border-color 3s ease, background-color 3s ease;
+  }
+  .fade.in{ opacity: 1; transform: none; filter: blur(0); }
+
+  @media (max-width: 640px){
+    nav a span{ display:none; }
+    nav{ gap: 1.2rem; }
+    .hero h1{ line-height: 1.7; }
+    .vtext{ line-height: 2.6; letter-spacing: .22em; }
+    .tod{ left: 50%; right: auto; transform: translateX(-50%); bottom: 4rem; }
+    .tools{ bottom: 4rem; }
+    .hint{ bottom: 1.2rem; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    html{ scroll-behavior: auto; }
+    .hint{ animation: none; opacity: .6; }
+    .fade{ transition: opacity 1.5s ease, color 3s ease; transform: none; filter: none; }
+    .fade.in{ filter: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="sea"></canvas>
+<div id="veil"></div>
+
+<header>
+  <a class="logo" href="#">A W A I<small>あ わ い</small></a>
+  <nav>
+    <a href="#concept">概念<span>CONCEPT</span></a>
+    <a href="#experience">体験<span>EXPERIENCE</span></a>
+    <a href="#outro">結び<span>CLOSING</span></a>
+  </nav>
+</header>
+
+<div class="tools">
+  <button class="tool" id="bgmBtn" type="button" aria-pressed="false" title="BGMをながす / とめる">♪ off</button>
+  <button class="tool on" id="uiBtn" type="button" title="文字の表示（すべて / 最小限 / なし）">text on</button>
+</div>
+<audio id="bgm" src="bgm.wav" loop preload="auto"></audio>
+
+<div class="tod" role="group" aria-label="景色をえらぶ">
+  <button type="button" data-tod="morning">朝</button>
+  <button type="button" data-tod="noon">昼</button>
+  <button type="button" data-tod="evening">夕</button>
+  <button type="button" data-tod="night">夜</button>
+  <button type="button" data-tod="ikai">異界</button>
+</div>
+
+<main>
+
+  <section class="hero">
+    <h1 class="fade">ひかりが、<br>しずかに滲む。</h1>
+    <p class="lede fade">空と水のあわいにひろがる、しずかな景色。<br>ふれた場所から、まるい波紋が、ひかりをまとってひろがります。</p>
+    <button class="cta fade" id="cta" type="button">ふれてみる</button>
+    <div class="hint">画面のどこかに、そっとふれてください</div>
+  </section>
+
+  <section class="concept" id="concept">
+    <div class="label fade">概 念 &nbsp;CONCEPT</div>
+    <div class="vtext fade">
+      <p class="big">あわい、とは。</p>
+      <p>ものと、もののあいだに<br>よこたわる、名もない領域のこと。</p>
+      <p>空がおわり、水がはじまる場所。<br>そのどちらでもない静けさのなかで、</p>
+      <p>ひかりだけが、<br>ゆっくりと呼吸している。</p>
+    </div>
+  </section>
+
+  <section class="experience" id="experience">
+    <div class="label fade">体 験 &nbsp;EXPERIENCE</div>
+    <div class="steps">
+      <div class="step fade">
+        <div class="no">壱</div>
+        <h3>ふれる</h3>
+        <p>指先が水面にふれる。<br>音はなく、ただ気配だけが<br>しずかに伝わってゆく。</p>
+      </div>
+      <div class="step fade">
+        <div class="no">弐</div>
+        <h3>ひろがる</h3>
+        <p>まるい波紋が、うつりこんだ<br>空をゆらしながら、<br>どこまでも遠くへひろがる。</p>
+      </div>
+      <div class="step fade">
+        <div class="no">参</div>
+        <h3>とける</h3>
+        <p>やがて波はしずまり、<br>水面はふたたび、<br>空とひとつにもどってゆく。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="outro" id="outro">
+    <h2 class="fade">なにも起こらないことが、<br>いちばん贅沢な出来事になる。</h2>
+    <p class="fade">ここには目的も、通知も、締切もありません。<br>ただ、空と水と、あなたの指先だけ。<br>朝も、昼も、夕暮れも、星の夜も。そして、ここではないどこかも。</p>
+  </section>
+
+  <footer>
+    <div class="mark">A W A I</div>
+    <div class="copy">空と水の、あわいへ。&nbsp;&nbsp;© 2026 AWAI</div>
+  </footer>
+
+</main>
+
+<script>
+(function(){
+  'use strict';
+
+  var canvas = document.getElementById('sea');
+  var gl = canvas.getContext('webgl', { antialias: false, alpha: false })
+        || canvas.getContext('experimental-webgl');
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if(!gl){
+    document.body.style.background =
+      'linear-gradient(to bottom,#5b8cba 0%,#c3d9e9 52%,#d4e4ee 55%,#a9c6da 100%)';
+  }
+
+  /* ==========================================================================
+     シェーダー本体（GLSL ES 1.0 / WebGL1）
+     --------------------------------------------------------------------------
+     ・JS文字列の配列を join('\n') したもの。編集は「行単位」で行うこと
+     ・座標系: uv は 0..1、y は上向き。地平線 hor = 0.55 + uScroll * 0.04
+     ・描画順（レイヤー構造）は README 5-4 参照。順序の入れ替えは禁止
+     ・GLSL ES 1.0 の制約: pow(負数, x) は未定義 / for は定数回のみ
+     ・uniform を追加したら、JS側の location 取得リストと毎フレームの
+       アップロード処理（frame()内）にも必ず同名で追加すること
+     ========================================================================== */
+  var VERT = [
+    'attribute vec2 aPos;',
+    'void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }'
+  ].join('\n');
+
+  var FRAG = [
+    'precision highp float;',
+    'uniform vec2 uRes;',
+    'uniform float uTime;',
+    'uniform float uScroll;',
+    'uniform vec4 uB[24];',
+    'uniform vec4 uM[4];',
+    'uniform vec3 uSkyTop;',
+    'uniform vec3 uSkyHor;',
+    'uniform vec3 uCloudTint;',
+    'uniform vec3 uSunCol;',
+    'uniform vec3 uWaterTint;',
+    'uniform vec3 uWaterDeep;',
+    'uniform vec3 uGlowCol;',
+    'uniform vec2 uSun;',
+    'uniform float uCloudAmt;',
+    'uniform float uCumAmt;',
+    'uniform float uSunDisc;',
+    'uniform float uSunHalo;',
+    'uniform float uStarAmt;',
+    'uniform float uMilky;',
+    'uniform float uIri;',
+    '',
+    'float hash21(vec2 p){',
+    '  p = fract(p * vec2(123.34, 456.21));',
+    '  p += dot(p, p + 45.32);',
+    '  return fract(p.x * p.y);',
+    '}',
+    'vec2 vhash(vec2 p){',
+    '  return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);',
+    '}',
+    'float noise(vec2 p){',
+    '  vec2 i = floor(p), f = fract(p);',
+    '  f = f * f * (3.0 - 2.0 * f);',
+    '  float a = hash21(i);',
+    '  float b = hash21(i + vec2(1.0, 0.0));',
+    '  float c = hash21(i + vec2(0.0, 1.0));',
+    '  float d = hash21(i + vec2(1.0, 1.0));',
+    '  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);',
+    '}',
+    'float fbm(vec2 p){',
+    '  float v = 0.0, a = 0.5;',
+    '  for(int i = 0; i < 5; i++){',
+    '    v += a * noise(p);',
+    '    p = p * 2.03 + vec2(17.3, 9.1);',
+    '    a *= 0.55;',
+    '  }',
+    '  return v;',
+    '}',
+    'float starLayer(vec2 p){',
+    '  vec2 g = floor(p), f = fract(p) - 0.5;',
+    '  vec2 rnd = vhash(g);',
+    '  float d = length(f - (rnd - 0.5) * 0.7);',
+    '  float sel = step(0.78, vhash(g + 11.3).x);',
+    '  float tw = 0.55 + 0.45 * sin(uTime * (0.8 + rnd.y * 2.2) + rnd.x * 6.28);',
+    '  return smoothstep(0.09, 0.0, d) * sel * tw * (0.35 + 0.65 * rnd.x);',
+    '}',
+    'float bokehLayer(vec2 p){',
+    '  vec2 g = floor(p), f = fract(p) - 0.5;',
+    '  vec2 rnd = vhash(g);',
+    '  float r = 0.08 + 0.14 * vhash(g + 3.1).x;',
+    '  float d = length(f - (rnd - 0.5) * 0.5);',
+    '  float sel = step(0.86, vhash(g + 9.7).y);',
+    '  float disc = smoothstep(r, r * 0.7, d) * 0.4;',
+    '  float rim = smoothstep(r * 0.72, r * 0.92, d) * smoothstep(r, r * 0.94, d) * 0.5;',
+    '  float tw = 0.6 + 0.4 * sin(uTime * (0.3 + rnd.x) + rnd.y * 6.28);',
+    '  return (disc + rim) * sel * tw;',
+    '}',
+    '',
+    'vec3 skyColor(vec2 uv, float aspect, float hor){',
+    '  float t = clamp((uv.y - hor) / max(1.0 - hor, 0.001), 0.0, 1.0);',
+    '  vec3 col = mix(uSkyHor, uSkyTop, pow(t, 0.8));',
+    '  vec2 sp = vec2(uv.x * aspect, uv.y);',
+    '',
+    '  col += vec3(0.32, 0.22, 0.12) * exp(-t * 6.0) * clamp(uStarAmt - 0.2, 0.0, 1.0) * 0.5;',
+    '  if(uStarAmt > 0.003){',
+    '    float s = starLayer(sp * 70.0) + starLayer(sp * 130.0 + 31.7) * 0.6',
+    '            + starLayer(sp * 240.0 + 7.7) * 0.4 + starLayer(sp * 380.0 + 3.3) * 0.3;',
+    '    col += vec3(0.85, 0.92, 1.0) * s * uStarAmt * smoothstep(0.02, 0.3, t);',
+    '  }',
+    '  if(uMilky > 0.003){',
+    '    float band = sp.y - (0.12 + 0.90 * (sp.x / max(aspect, 0.001)));',
+    '    float bw2 = band * band;',
+    '    float bm = exp(-bw2 / 0.045);',
+    '    float core = exp(-bw2 / 0.008);',
+    '    float dust = fbm(sp * 5.0 + 3.7);',
+    '    float dust2 = fbm(sp * 11.0 - 2.0);',
+    '    float lane = smoothstep(0.35, 0.70, fbm(sp * 7.0 + vec2(8.2, 1.3)));',
+    '    float mw = bm * (0.25 + 0.55 * dust) * (1.0 - lane * core * 0.6);',
+    '    vec3 mwCol = mix(vec3(0.42, 0.52, 0.85), vec3(0.85, 0.58, 0.68), core * 0.85);',
+    '    float tvis = smoothstep(0.0, 0.15, t);',
+    '    col += mwCol * mw * (0.35 + 0.65 * dust2) * uMilky * tvis * 0.85;',
+    '    col += vec3(0.92, 0.85, 0.95) * core * dust2 * uMilky * tvis * 0.30;',
+    '    col += vec3(0.90, 0.93, 1.0) * (starLayer(sp * 300.0 + 51.1) + starLayer(sp * 430.0 + 17.3) * 0.7) * bm * uMilky * tvis;',
+    '  }',
+    '',
+    '  float per = mix(5.0, 1.0, pow(t, 0.45));',
+    '  vec2 cp = vec2(uv.x * aspect * 0.9, 0.35 + t * 1.6) * per * 0.6;',
+    '  cp.x += uTime * 0.006;',
+    '  float base = fbm(cp * 1.4);',
+    '  float wisp = fbm(cp * 3.6 + base * 1.5 + uTime * 0.004);',
+    '  float cloud = smoothstep(0.50, 0.80, base * 0.65 + wisp * 0.45) * uCloudAmt;',
+    '  cloud *= smoothstep(0.02, 0.28, t);',
+    '  col = mix(col, uCloudTint, min(cloud, 1.0) * 0.85);',
+    '',
+    '  col = mix(col, mix(uSkyHor, vec3(1.0), 0.3), exp(-t * 5.5) * 0.45);',
+    '',
+    '  /* towering cumulus — drawn after the haze so they stay crisp in the sky */',
+    '  if(uCumAmt > 0.003){',
+    '    float xx = uv.x * aspect * 0.7 + uTime * 0.0025;',
+    '    float rise = uv.y - hor;',
+    '    float top = 0.05 + 0.50 * pow(fbm(vec2(xx * 1.5, 7.7)), 1.8) + 0.06 * (fbm(vec2(xx * 6.0, 3.3)) - 0.5);',
+    '    float patch = 0.25 + 0.75 * smoothstep(0.28, 0.48, fbm(vec2(xx * 2.4, 2.1)));',
+    '    float f1 = fbm(vec2(xx * 6.5, rise * 7.0) + 4.4);',
+    '    float f2 = fbm(vec2(xx * 13.0, rise * 15.0) + 9.1);',
+    '    float field = f1 * 0.62 + f2 * 0.38 + (top - rise) * 0.5;',
+    '    float body = smoothstep(0.52, 0.60, field);',
+    '    float cum = smoothstep(top, top - 0.09, rise) * body * patch * smoothstep(0.0, 0.012, rise) * uCumAmt;',
+    '    float rel = clamp(rise / max(top, 0.001), 0.0, 1.0);',
+    '    vec3 cumCol = mix(uCloudTint * vec3(0.60, 0.66, 0.80), min(uCloudTint * 1.25, vec3(1.05)), clamp(pow(rel, 0.7) * 0.6 + (f1 - 0.35) * 0.8, 0.0, 1.0));',
+    '    cumCol *= 0.82 + 0.30 * f2;',
+    '    col = mix(col, cumCol, clamp(cum * 1.7, 0.0, 1.0) * 0.96);',
+    '  }',
+    '',
+    '  vec2 sd = vec2((uv.x - uSun.x) * aspect, uv.y - uSun.y);',
+    '  float sdist = length(sd);',
+    '  /* the sun is pure light: a hot core melting into a wide glow, no hard rim */',
+    '  float halo = (exp(-sdist * sdist / 0.0025) * 0.85 + exp(-sdist * sdist / 0.015) * 0.55 + exp(-sdist * sdist / 0.16) * 0.25) * uSunHalo;',
+    '  col += uSunCol * halo;',
+    '  if(uSunDisc > 0.002){',
+    '    float r = sdist / uSunDisc;',
+    '    float disc = smoothstep(1.0, 0.9, r);',
+    '    /* lunar maria fade in when the sky is starry; the evening sun stays a clean glow */',
+    '    float mariaAmt = clamp((uStarAmt - 0.3) * 2.5, 0.0, 1.0);',
+    '    vec2 mUV = sd / uSunDisc;',
+    '    float maria = fbm(mUV * 2.6 + 17.3);',
+    '    float maria2 = fbm(mUV * 5.5 + 4.2);',
+    '    vec3 mcol = uSunCol * (1.0 - mariaAmt * (0.30 * smoothstep(0.42, 0.72, maria) + 0.14 * smoothstep(0.48, 0.78, maria2)));',
+    '    mcol *= 1.0 - 0.18 * mariaAmt * r * r;',
+    '    col = mix(col, mcol, disc * 0.95);',
+    '  }',
+    '  return col;',
+    '}',
+    '',
+    'vec3 waterColor(vec2 uv, float aspect, float hor, vec2 grad){',
+    '  float depth = clamp((hor - uv.y) / max(hor, 0.001), 0.0, 1.0);',
+    '  float w = hor - uv.y;',
+    '  float wob = (fbm(vec2(uv.x * aspect * 2.5, uv.y * 16.0) + uTime * 0.025) - 0.5) * 0.016 * (0.3 + depth);',
+    '  vec2 ruv = vec2(uv.x + wob * 0.5 + grad.x * 0.03, hor + w * 0.85 + wob + grad.y * 0.06);',
+    '  vec3 col = skyColor(ruv, aspect, hor);',
+    '  col = mix(col, uWaterTint, 0.22 + 0.16 * depth);',
+    '  col = mix(col, uWaterDeep, depth * depth * 0.4);',
+    '  col = mix(col, mix(uSkyHor, vec3(1.0), 0.25), exp(-w * 5.0) * 0.30);',
+    '',
+    '  if(uIri > 0.003){',
+    '    float ph1 = fbm(vec2(uv.x * aspect * 1.8, uv.y * 5.5) + uTime * 0.012);',
+    '    float ph2 = fbm(vec2(uv.x * aspect * 3.2, uv.y * 9.0) - uTime * 0.008 + 6.1);',
+    '    float ph3 = fbm(vec2(uv.x * aspect * 2.6, uv.y * 7.0) + 2.9);',
+    '    col = mix(col, vec3(0.50, 0.40, 0.74), uIri * smoothstep(0.40, 0.75, ph1) * 0.35);',
+    '    col = mix(col, vec3(0.80, 0.52, 0.72), uIri * smoothstep(0.62, 0.88, ph3) * 0.22);',
+    '    col += uSunCol * smoothstep(0.50, 0.80, ph2) * uIri * 0.55;',
+    '    col += vec3(0.95, 0.82, 0.92) * starLayer(vec2(uv.x * aspect, uv.y * 2.0) * 150.0) * uIri * 0.9;',
+    '  }',
+    '',
+    '  float glint = fbm(vec2(uv.x * aspect * 7.0, uv.y * 26.0) + uTime * 0.05);',
+    '  col += uSunCol * smoothstep(0.60, 0.80, glint) * (0.08 + uIri * 0.22) * (0.25 + 0.75 * depth);',
+    '  float sx = (uv.x - uSun.x) * aspect;',
+    '  float shimmer = 0.75 + 0.25 * noise(vec2(uv.x * aspect * 60.0, uv.y * 120.0) + uTime * 0.4);',
+    '  float streak = exp(-sx * sx * 14.0) * exp(-w * 4.5) * uSunHalo * shimmer;',
+    '  col += uSunCol * streak * 0.28;',
+    '  return col;',
+    '}',
+    '',
+    'void main(){',
+    '  vec2 uv = gl_FragCoord.xy / uRes;',
+    '  float aspect = uRes.x / uRes.y;',
+    '  float hor = 0.55 + uScroll * 0.04;',
+    '',
+    '  /* ---- ripples: height + gradient for 3D shading ---- */',
+    '  float h = 0.0;',
+    '  vec2 grad = vec2(0.0);',
+    '  float glow = 0.0;',
+    '  for(int i = 0; i < 24; i++){',
+    '    vec4 b = uB[i];',
+    '    if(b.w <= 0.0){ continue; }',
+    '    float age = uTime - b.z;',
+    '    if(age < 0.0){ continue; }',
+    '    if(b.y < hor){',
+    '      if(uv.y > hor){ continue; }',
+    '      /* project both points onto the ground plane for true perspective */',
+    '      float wpx = hor - uv.y;',
+    '      float wb = hor - b.y;',
+    '      vec2 P  = vec2((uv.x - 0.5) * aspect, 1.0) / (wpx + 0.05);',
+    '      vec2 Pb = vec2((b.x  - 0.5) * aspect, 1.0) / (wb  + 0.05);',
+    '      vec2 d = P - Pb;',
+    '      float dist = length(d);',
+    '      float rt = age * 0.28 * (0.7 + 0.5 * b.w);',
+    '      float front = dist - rt;',
+    '      /* 波面のはるか外側は寄与ゼロ。ここで抜けないと地平線際の端で',
+    '         exp() がオーバーフローして NaN（黒ノイズ）になる — 消さないこと */',
+    '      if(front > 0.6){ continue; }',
+    '      float lead = 0.10;',
+    '      float tail = 0.25 + rt * 0.45;',
+    '      float env = exp(front > 0.0 ? -front * front / (lead * lead) : front / tail);',
+    '      float amp = exp(-age * 0.30) / (1.0 + rt * 0.9) * min(age * 8.0, 1.0) * b.w;',
+    '      amp *= smoothstep(0.04, 0.12, wpx);',
+    '      float ph = front * 38.0;',
+    '      h += sin(ph) * env * amp;',
+    '      grad += (d / max(dist, 0.001)) * cos(ph) * env * amp;',
+    '      float cg = exp(-dist * dist / (0.06 + rt * rt * 0.2)) * exp(-age * 0.55) * b.w;',
+    '      glow += cg * 0.25;',
+    '    } else {',
+    '      vec2 d = uv - b.xy;',
+    '      d.x *= aspect;',
+    '      float dist2 = dot(d, d);',
+    '      float r = (0.02 + 0.18 * (1.0 - exp(-age * 0.6))) * (0.5 + 0.7 * b.w);',
+    '      float fade = exp(-age * 0.5) * min(age * 5.0, 1.0);',
+    '      glow += (exp(-dist2 / (r * r * 0.4)) + exp(-dist2 / (r * r * 2.6)) * 0.35) * fade * b.w;',
+    '    }',
+    '  }',
+    '  h = clamp(h, -1.6, 1.6);',
+    '  grad = clamp(grad, vec2(-2.0), vec2(2.0));',
+    '',
+    '  vec3 col;',
+    '  if(uv.y > hor){',
+    '    col = skyColor(uv, aspect, hor);',
+    '  } else {',
+    '    col = waterColor(uv, aspect, hor, grad);',
+    '    vec2 L = normalize(vec2(uSun.x - 0.5, max(uSun.y - hor, 0.15)));',
+    '    float shade = dot(grad, L);',
+    '    col += mix(vec3(1.0), uSunCol, 0.55) * shade * (0.5 + uIri * 0.45);',
+    '    col += uGlowCol * max(h, 0.0) * max(h, 0.0) * (0.24 + uIri * 0.3);',
+    '  }',
+    '  col = mix(col, mix(uSkyHor, vec3(1.0), 0.3), exp(-abs(uv.y - hor) * 26.0) * 0.35);',
+    '',
+    '  /* ---- shooting stars (mirrored faintly in the water) ---- */',
+    '  vec2 mp = uv.y > hor ? uv : vec2(uv.x, hor + (hor - uv.y) * 0.85);',
+    '  float mDim = uv.y > hor ? 1.0 : 0.3;',
+    '  for(int i = 0; i < 4; i++){',
+    '    vec4 m = uM[i];',
+    '    if(m.w <= 0.0){ continue; }',
+    '    float age = uTime - m.z;',
+    '    if(age < 0.0 || age > 1.8){ continue; }',
+    '    vec2 dirM = normalize(vec2(-0.62, -(0.28 + 0.28 * fract(m.w * 7.3))));',
+    '    float sp = 0.32 + 0.22 * fract(m.w * 3.1);',
+    '    vec2 head = m.xy + dirM * sp * age;',
+    '    float len = 0.10 + 0.08 * fract(m.w * 5.7);',
+    '    vec2 pa = vec2((mp.x - head.x) * aspect, mp.y - head.y);',
+    '    vec2 ba = vec2(-dirM.x * len * aspect, -dirM.y * len);',
+    '    float tseg = clamp(dot(pa, ba) / max(dot(ba, ba), 0.0001), 0.0, 1.0);',
+    '    float dseg = length(pa - ba * tseg);',
+    '    float fadeM = smoothstep(0.0, 0.12, age) * smoothstep(1.8, 0.9, age);',
+    '    float body = exp(-dseg * dseg / 0.0000025) * (1.0 - tseg * 0.85);',
+    '    float sparkle = exp(-dot(pa, pa) / 0.00002);',
+    '    col += vec3(0.92, 0.96, 1.0) * (body * 0.9 + sparkle * 0.8) * fadeM * mDim;',
+    '  }',
+    '',
+    '  /* ---- otherworld drifting light motes ---- */',
+    '  if(uIri > 0.003){',
+    '    vec2 pp = vec2(uv.x * aspect, uv.y - uTime * 0.012);',
+    '    vec2 pp2 = vec2(uv.x * aspect + 3.3, uv.y - uTime * 0.02);',
+    '    float bok = bokehLayer(pp * 7.0) * 0.42 + bokehLayer(pp2 * 13.0 + 5.3) * 0.3;',
+    '    vec3 mtint = mix(vec3(0.72, 0.66, 0.95), vec3(1.0, 0.76, 0.52), noise(uv * 5.0 + uTime * 0.03));',
+    '    col += mtint * bok * uIri;',
+    '  }',
+    '',
+    '  float g1 = clamp(glow, 0.0, 1.2);',
+    '  col = 1.0 - (1.0 - col) * (1.0 - clamp(g1, 0.0, 1.0) * 0.7);',
+    '  col += uGlowCol * g1 * 0.08;',
+    '',
+    '  vec2 q = uv - 0.5;',
+    '  col *= 1.0 - dot(q, q) * 0.14;',
+    '  col += (hash21(gl_FragCoord.xy + fract(uTime) * 100.0) - 0.5) * 0.016;',
+    '  gl_FragColor = vec4(col, 1.0);',
+    '}'
+  ].join('\n');
+
+  /* ==========================================================================
+     PAL: シーン別パラメータ（このプロジェクトで一番よく調整する場所）
+     --------------------------------------------------------------------------
+     skyTop / skyHor : 空の上端・地平線の色 [R,G,B] 0..1
+     cloudTint       : 雲の色    cloudAmt: 薄雲の量   cumAmt: 入道雲の量
+     sun             : 光源の位置 [x, y]（uv座標・yは上向き。地平線は0.55）
+     sunCol          : 光源の色   sunDisc: 円盤の半径（0=光のみ。月だけ>0）
+     sunHalo         : 光の強さ（夕焼けの濃さはここ）
+     waterTint/Deep  : 水面の色味・深部の色
+     starAmt         : 星の量（>0.5で月に模様が出る）  iri: 異界効果(0 or 1)
+     glow            : 波紋の波頭・タッチ光の色
+     切替は cur → target への指数補間（約2〜3秒）で自動クロスフェードされる
+     ========================================================================== */
+  var PAL = {
+    morning: {
+      skyTop: [0.45, 0.62, 0.80], skyHor: [0.97, 0.86, 0.76],
+      cloudTint: [1.0, 0.93, 0.86], cloudAmt: 0.6, cumAmt: 0.4,
+      sun: [0.72, 0.60], sunCol: [1.0, 0.85, 0.62], sunDisc: 0.0, sunHalo: 0.6,
+      waterTint: [0.93, 0.88, 0.84], waterDeep: [0.58, 0.66, 0.76],
+      starAmt: 0.0, iri: 0.0, glow: [1.0, 0.92, 0.78]
+    },
+    noon: {
+      skyTop: [0.30, 0.57, 0.88], skyHor: [0.88, 0.94, 0.98],
+      cloudTint: [1.0, 1.0, 1.0], cloudAmt: 0.5, cumAmt: 0.55,
+      sun: [0.76, 0.98], sunCol: [1.0, 0.99, 0.94], sunDisc: 0.0, sunHalo: 0.45,
+      waterTint: [0.88, 0.93, 0.965], waterDeep: [0.63, 0.77, 0.88],
+      starAmt: 0.0, iri: 0.0, glow: [0.88, 0.96, 1.0]
+    },
+    evening: {
+      skyTop: [0.26, 0.28, 0.50], skyHor: [0.98, 0.58, 0.32],
+      cloudTint: [1.0, 0.70, 0.50], cloudAmt: 0.55, cumAmt: 0.4,
+      sun: [0.60, 0.575], sunCol: [1.0, 0.60, 0.25], sunDisc: 0.0, sunHalo: 0.85,
+      waterTint: [0.86, 0.58, 0.42], waterDeep: [0.22, 0.22, 0.36],
+      starAmt: 0.15, iri: 0.0, glow: [1.0, 0.76, 0.48]
+    },
+    night: {
+      skyTop: [0.030, 0.045, 0.12], skyHor: [0.18, 0.16, 0.21],
+      cloudTint: [0.28, 0.33, 0.46], cloudAmt: 0.25, cumAmt: 0.12,
+      sun: [0.24, 0.82], sunCol: [0.92, 0.96, 1.0], sunDisc: 0.027, sunHalo: 0.28,
+      waterTint: [0.10, 0.15, 0.24], waterDeep: [0.03, 0.05, 0.11],
+      starAmt: 1.4, iri: 0.0, glow: [0.55, 0.88, 1.0]
+    },
+    ikai: {
+      skyTop: [0.05, 0.07, 0.18], skyHor: [0.28, 0.25, 0.48],
+      cloudTint: [0.48, 0.40, 0.66], cloudAmt: 0.25, cumAmt: 0.15,
+      sun: [0.65, 0.62], sunCol: [1.0, 0.62, 0.30], sunDisc: 0.0, sunHalo: 0.45,
+      waterTint: [0.16, 0.22, 0.45], waterDeep: [0.03, 0.05, 0.14],
+      starAmt: 0.7, iri: 1.0, glow: [1.0, 0.74, 0.46]
+    }
+  };
+  var PKEYS = ['skyTop','skyHor','cloudTint','cloudAmt','cumAmt','sun','sunCol','sunDisc','sunHalo','waterTint','waterDeep','starAmt','iri','glow'];
+
+  function initialMode(){
+    var hh = new Date().getHours();
+    if(hh >= 5 && hh < 10) return 'morning';
+    if(hh >= 10 && hh < 16) return 'noon';
+    if(hh >= 16 && hh < 19) return 'evening';
+    return 'night';
+  }
+  var mode = initialMode();
+  var target = PAL[mode];
+  var cur = JSON.parse(JSON.stringify(target));
+
+  var MAXB = 24, MAXM = 4;
+  var blooms = [];   // ripples / sky glows: {x, y, t0, s}
+  var meteors = [];  // shooting stars: {x, y, t0, seed}
+  var milkyUntil = -1, milkyCur = 0;
+  var startT = performance.now();
+  var W = innerWidth, H = innerHeight;
+  var prog = null, U = {};
+  var bData = new Float32Array(MAXB * 4);
+  var mData = new Float32Array(MAXM * 4);
+
+  function now(){ return (performance.now() - startT) / 1000; }
+
+  function compile(type, src){
+    var s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+      console.error(gl.getShaderInfoLog(s));
+      return null;
+    }
+    return s;
+  }
+
+  function setup(){
+    var vs = compile(gl.VERTEX_SHADER, VERT);
+    var fs = compile(gl.FRAGMENT_SHADER, FRAG);
+    if(!vs || !fs) return false;
+    prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog, gl.LINK_STATUS)){
+      console.error(gl.getProgramInfoLog(prog));
+      return false;
+    }
+    gl.useProgram(prog);
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    var aPos = gl.getAttribLocation(prog, 'aPos');
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    ['uRes','uTime','uScroll','uSkyTop','uSkyHor','uCloudTint','uSunCol','uWaterTint',
+     'uWaterDeep','uGlowCol','uSun','uCloudAmt','uCumAmt','uSunDisc','uSunHalo',
+     'uStarAmt','uMilky','uIri'
+    ].forEach(function(n){ U[n] = gl.getUniformLocation(prog, n); });
+    U.uB = gl.getUniformLocation(prog, 'uB[0]') || gl.getUniformLocation(prog, 'uB');
+    U.uM = gl.getUniformLocation(prog, 'uM[0]') || gl.getUniformLocation(prog, 'uM');
+    return true;
+  }
+
+  function resize(){
+    W = innerWidth; H = innerHeight;
+    var dpr = Math.min(devicePixelRatio || 1, 1.75);
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    if(gl) gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+
+  function spawn(ux, uy, s){
+    blooms.push({ x: ux, y: uy, t0: now(), s: s });
+    if(blooms.length > MAXB * 2) blooms.splice(0, blooms.length - MAXB * 2);
+  }
+  function spawnMeteor(ux, uy){
+    meteors.push({ x: ux, y: uy, t0: now(), seed: 0.2 + Math.random() * 0.8 });
+    if(meteors.length > MAXM) meteors.splice(0, meteors.length - MAXM);
+  }
+
+  function lerpPalette(dt){
+    var k = 1 - Math.exp(-dt * 1.4);
+    PKEYS.forEach(function(key){
+      var t = target[key], c = cur[key];
+      if(typeof t === 'number'){ cur[key] = c + (t - c) * k; }
+      else { for(var i = 0; i < t.length; i++){ c[i] += (t[i] - c[i]) * k; } }
+    });
+  }
+
+  var prevT = 0;
+  function frame(){
+    var t = now();
+    var dt = Math.min(t - prevT, 0.1);
+    prevT = t;
+    lerpPalette(dt);
+
+    // milky way: always present at night, surging brighter at random moments
+    var mT = mode === 'night' ? (t < milkyUntil ? 1 : 0.7) : 0;
+    milkyCur += (mT - milkyCur) * (1 - Math.exp(-dt * 0.5));
+
+    for(var i = blooms.length - 1; i >= 0; i--){
+      if(t - blooms[i].t0 > 14) blooms.splice(i, 1);
+    }
+    for(var j = meteors.length - 1; j >= 0; j--){
+      if(t - meteors[j].t0 > 2) meteors.splice(j, 1);
+    }
+    bData.fill(0);
+    var n = Math.min(blooms.length, MAXB);
+    var off = blooms.length - n;
+    for(var k = 0; k < n; k++){
+      var b = blooms[off + k];
+      bData[k*4] = b.x; bData[k*4+1] = b.y; bData[k*4+2] = b.t0; bData[k*4+3] = b.s;
+    }
+    mData.fill(0);
+    for(var q = 0; q < meteors.length; q++){
+      var m = meteors[q];
+      mData[q*4] = m.x; mData[q*4+1] = m.y; mData[q*4+2] = m.t0; mData[q*4+3] = m.seed;
+    }
+
+    gl.uniform2f(U.uRes, canvas.width, canvas.height);
+    gl.uniform1f(U.uTime, t);
+    gl.uniform1f(U.uScroll, Math.min(scrollY / H, 1));
+    gl.uniform4fv(U.uB, bData);
+    gl.uniform4fv(U.uM, mData);
+    gl.uniform3fv(U.uSkyTop, cur.skyTop);
+    gl.uniform3fv(U.uSkyHor, cur.skyHor);
+    gl.uniform3fv(U.uCloudTint, cur.cloudTint);
+    gl.uniform3fv(U.uSunCol, cur.sunCol);
+    gl.uniform3fv(U.uWaterTint, cur.waterTint);
+    gl.uniform3fv(U.uWaterDeep, cur.waterDeep);
+    gl.uniform3fv(U.uGlowCol, cur.glow);
+    gl.uniform2fv(U.uSun, cur.sun);
+    gl.uniform1f(U.uCloudAmt, cur.cloudAmt);
+    gl.uniform1f(U.uCumAmt, cur.cumAmt);
+    gl.uniform1f(U.uSunDisc, cur.sunDisc);
+    gl.uniform1f(U.uSunHalo, cur.sunHalo);
+    gl.uniform1f(U.uStarAmt, cur.starAmt);
+    gl.uniform1f(U.uMilky, milkyCur);
+    gl.uniform1f(U.uIri, cur.iri);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- switcher ---------- */
+  var todBtns = document.querySelectorAll('.tod button');
+  function setMode(m){
+    mode = m;
+    target = PAL[m];
+    document.documentElement.setAttribute('data-tod', m);
+    todBtns.forEach(function(btn){
+      btn.classList.toggle('on', btn.dataset.tod === m);
+    });
+  }
+  todBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){ setMode(btn.dataset.tod); });
+  });
+  setMode(mode);
+
+  /* --------------------------------------------------------------------------
+     ページ送りスクロール（PC・幅641px以上のみ）:
+     wheel を乗っ取り、1回で次/前のセクションへ 1.6秒(dur=1600)かけて移動。
+     モバイルはネイティブスクロール＋CSSスナップ。セクション追加時は SECTS へ。
+     -------------------------------------------------------------------------- */
+  var SECTS = ['.hero', '#concept', '#experience', '#outro', 'footer']
+    .map(function(s){ return document.querySelector(s); });
+  var gliding = false;
+  function sectTop(el){ return el.getBoundingClientRect().top + scrollY; }
+  function glideTo(y){
+    y = Math.max(0, Math.min(y, document.documentElement.scrollHeight - innerHeight));
+    if(reduced){ window.scrollTo(0, y); return; }
+    gliding = true;
+    var start = scrollY, dist = y - start, t0 = performance.now(), dur = 1600;
+    function step(nowT){
+      var p = Math.min((nowT - t0) / dur, 1);
+      var e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      window.scrollTo(0, start + dist * e);
+      if(p < 1){ requestAnimationFrame(step); }
+      else { setTimeout(function(){ gliding = false; }, 80); }
+    }
+    requestAnimationFrame(step);
+  }
+  function currentSect(){
+    var best = 0, bd = 1e9;
+    SECTS.forEach(function(el, i){
+      var d = Math.abs(sectTop(el) - scrollY);
+      if(d < bd){ bd = d; best = i; }
+    });
+    return best;
+  }
+  if(matchMedia('(min-width: 641px)').matches){
+    addEventListener('wheel', function(e){
+      if(e.ctrlKey) return;
+      e.preventDefault();
+      if(gliding || Math.abs(e.deltaY) < 8) return;
+      var idx = currentSect();
+      var next = e.deltaY > 0 ? Math.min(idx + 1, SECTS.length - 1) : Math.max(idx - 1, 0);
+      if(next === idx) return;
+      glideTo(next === SECTS.length - 1 ? 1e9 : sectTop(SECTS[next]));
+    }, { passive: false });
+  }
+  document.querySelectorAll('nav a[href^="#"]').forEach(function(a){
+    a.addEventListener('click', function(e){
+      e.preventDefault();
+      var el = document.querySelector(a.getAttribute('href'));
+      if(el) glideTo(sectTop(el));
+    });
+  });
+
+  /* ---------- text visibility: on → min → off → on ---------- */
+  var uiBtn = document.getElementById('uiBtn');
+  var uiState = 0; // 0: everything, 1: bare minimum, 2: nothing
+  uiBtn.addEventListener('click', function(){
+    uiState = (uiState + 1) % 3;
+    document.body.classList.toggle('ui-min', uiState === 1);
+    document.body.classList.toggle('no-ui', uiState === 2);
+    uiBtn.textContent = uiState === 0 ? 'text on' : (uiState === 1 ? 'text min' : 'text off');
+    uiBtn.classList.toggle('on', uiState === 0);
+  });
+
+  if(gl && setup()){
+    resize();
+    addEventListener('resize', resize);
+    requestAnimationFrame(frame);
+
+    var HOR = 0.55; // must match shader horizon (at scroll 0)
+
+    /* ----------------------------------------------------------------------
+       入力処理: 波紋はユーザー操作でのみ発生（自動発生させないこと＝仕様）
+       ・pointermove … 60px 以上動くたびに弱い波紋 (強さ0.22)
+       ・pointerdown … 強い波紋 (1.0)。夜モードで空側なら流れ星
+       ・座標は ux = x/W, uy = 1 - y/H（yを反転してシェーダー座標に合わせる）
+       ---------------------------------------------------------------------- */
+    var lastX = -1, lastY = -1;
+    addEventListener('pointermove', function(e){
+      if(lastX < 0 || Math.hypot(e.clientX - lastX, e.clientY - lastY) > 60){
+        spawn(e.clientX / W, 1 - e.clientY / H, 0.22);
+        lastX = e.clientX; lastY = e.clientY;
+      }
+    }, { passive: true });
+    addEventListener('pointerdown', function(e){
+      var ux = e.clientX / W, uy = 1 - e.clientY / H;
+      if(mode === 'night' && uy > HOR + 0.03){
+        spawnMeteor(ux, uy);   // touch the night sky → a shooting star
+      } else {
+        spawn(ux, uy, 1.0);
+      }
+    }, { passive: true });
+
+    // --- ambient life (sky only — the water stays still until touched) ---
+    if(!reduced){
+      setInterval(function(){
+        if(document.hidden || mode !== 'night') return;
+        if(Math.random() < 0.45) spawnMeteor(0.2 + Math.random() * 0.7, 0.68 + Math.random() * 0.27);
+      }, 9000);
+      setInterval(function(){
+        if(document.hidden || mode !== 'night') return;
+        if(now() > milkyUntil && Math.random() < 0.35){
+          milkyUntil = now() + 16 + Math.random() * 10;
+        }
+      }, 10000);
+    }
+
+    // CTA: a small chorus of ripples, then drift to the concept
+    document.getElementById('cta').addEventListener('click', function(){
+      var seq = [[0.5,0.32,0.9],[0.38,0.22,0.55],[0.64,0.4,0.6],[0.52,0.15,0.45]];
+      seq.forEach(function(p, i){
+        setTimeout(function(){ spawn(p[0], p[1], p[2]); }, i * 260);
+      });
+      setTimeout(function(){
+        glideTo(sectTop(document.getElementById('concept')));
+      }, 700);
+    });
+
+    canvas.addEventListener('webglcontextlost', function(e){ e.preventDefault(); }, false);
+    canvas.addEventListener('webglcontextrestored', function(){ setup(); resize(); }, false);
+  }
+
+  /* --------------------------------------------------------------------------
+     BGM: 音源の差し替えは bgm.wav を置き換えるか <audio> の src を変更。
+     音量は 0.55、フェード速度は 0.06 を調整（README 5-8）。
+     ブラウザの自動再生制限のため必ず OFF 始まり。
+     -------------------------------------------------------------------------- */
+  (function(){
+    var bgm = document.getElementById('bgm');
+    var btn = document.getElementById('bgmBtn');
+    var targetVol = 0;
+    bgm.volume = 0;
+    setInterval(function(){
+      var v = bgm.volume + (targetVol - bgm.volume) * 0.06;
+      if(Math.abs(v - targetVol) < 0.005) v = targetVol;
+      bgm.volume = v;
+      if(targetVol === 0 && v === 0 && !bgm.paused) bgm.pause();
+    }, 50);
+    btn.addEventListener('click', function(){
+      var turnOn = targetVol === 0;
+      targetVol = turnOn ? 0.55 : 0;
+      if(turnOn){
+        bgm.play().catch(function(){ targetVol = 0; turnOn = false; sync(); });
+      }
+      sync();
+      function sync(){
+        btn.classList.toggle('on', turnOn);
+        btn.setAttribute('aria-pressed', String(turnOn));
+        btn.textContent = turnOn ? '♪ on' : '♪ off';
+      }
+    });
+  })();
+
+  // --- intro veil ---
+  addEventListener('load', function(){
+    setTimeout(function(){ document.getElementById('veil').classList.add('gone'); }, 300);
+  });
+
+  // --- scroll reveal ---
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){
+        en.target.classList.add('in');
+        io.unobserve(en.target);
+      }
+    });
+  }, { threshold: 0.25 });
+  document.querySelectorAll('.fade').forEach(function(el){ io.observe(el); });
+})();
+</script>
+</body>
+</html>
