@@ -388,6 +388,7 @@
     letter-spacing: .12em;
     color: var(--ink-soft);
   }
+  .step p span, .outro p span{ display: block; }
 
   /* ---------- outro / footer ---------- */
   .outro{
@@ -557,26 +558,34 @@
       margin-left: 1.1em;
     }
     .experience{
-      padding-top: 12vh;
-      padding-bottom: 10rem;
+      min-height: 100svh;
+      padding-top: clamp(5.4rem, 12svh, 6.5rem);
+      padding-bottom: calc(env(safe-area-inset-bottom) + clamp(7rem, 17svh, 8.5rem));
+      justify-content: center;
     }
     .steps{
       flex-direction: column;
-      gap: 2.35rem;
-      margin-top: 2.5rem;
+      gap: clamp(.8rem, 2.5svh, 1.8rem);
+      margin-top: clamp(1rem, 2.8svh, 2rem);
+      width: 100%;
     }
     .step{
       max-width: min(18rem, 100%);
+      margin-inline: auto;
     }
+    .step .no{ font-size: .68rem; }
     .step h3{
-      margin-top: .9em;
-      font-size: 1.35rem;
+      margin-top: .55em;
+      font-size: clamp(1.2rem, 5.5vw, 1.35rem);
     }
     .step p{
-      margin-top: 1.1em;
-      font-size: .78rem;
-      line-height: 2.05;
+      margin-top: .65em;
+      font-size: clamp(.76rem, 3.45vw, .82rem);
+      line-height: 1.85;
       letter-spacing: .08em;
+    }
+    .step p span, .outro p span{
+      white-space: nowrap;
     }
     .outro{
       min-height: 100svh;
@@ -594,7 +603,7 @@
       margin-top: 2em;
       font-size: .76rem;
       line-height: 2.15;
-      letter-spacing: .1em;
+      letter-spacing: .07em;
     }
     footer{
       padding: 2.5rem 1.25rem calc(env(safe-area-inset-bottom) + 9.5rem);
@@ -674,24 +683,24 @@
       <div class="step fade">
         <div class="no">壱</div>
         <h3>ふれる</h3>
-        <p>指先が水面にふれる。<br>音はなく、ただ気配だけが<br>しずかに伝わってゆく。</p>
+        <p><span>指先が水面にふれる。</span><span>音はなく、ただ気配だけが</span><span>しずかに伝わってゆく。</span></p>
       </div>
       <div class="step fade">
         <div class="no">弐</div>
         <h3>ひろがる</h3>
-        <p>まるい波紋が、うつりこんだ<br>空をゆらしながら、<br>どこまでも遠くへひろがる。</p>
+        <p><span>まるい波紋が、うつりこんだ</span><span>空をゆらしながら、</span><span>どこまでも遠くへひろがる。</span></p>
       </div>
       <div class="step fade">
         <div class="no">参</div>
         <h3>とける</h3>
-        <p>やがて波はしずまり、<br>水面はふたたび、<br>空とひとつにもどってゆく。</p>
+        <p><span>やがて波はしずまり、</span><span>水面はふたたび、</span><span>空とひとつにもどってゆく。</span></p>
       </div>
     </div>
   </section>
 
   <section class="outro" id="outro">
     <h2 class="fade">なにも起こらないことが、<br>いちばん贅沢な出来事になる。</h2>
-    <p class="fade">ここには目的も、通知も、締切もありません。<br>ただ、空と水と、あなたの指先だけ。<br>朝も、昼も、夕暮れも、星の夜も。そして、ここではないどこかも。</p>
+    <p class="fade"><span>ここには目的も、通知も、</span><span>締切もありません。</span><span>ただ、空と水と、あなたの指先だけ。</span><span>朝も、昼も、夕暮れも、星の夜も。</span><span>そして、ここではないどこかも。</span></p>
   </section>
 
   <footer>
@@ -1350,25 +1359,40 @@
     var bgm = document.getElementById('bgm');
     var btn = document.getElementById('bgmBtn');
     var targetVol = 0;
+    var bgmOn = false;
     bgm.volume = 0;
     bgm.load();
     setInterval(function(){
+      if(!bgmOn){
+        if(!bgm.paused) bgm.pause();
+        bgm.volume = 0;
+        return;
+      }
       var v = bgm.volume + (targetVol - bgm.volume) * 0.06;
       if(Math.abs(v - targetVol) < 0.005) v = targetVol;
       bgm.volume = v;
-      if(targetVol === 0 && v === 0 && !bgm.paused) bgm.pause();
     }, 50);
     btn.addEventListener('click', function(){
-      var turnOn = targetVol === 0;
-      targetVol = turnOn ? 0.55 : 0;
-      if(turnOn){
-        bgm.play().catch(function(){ targetVol = 0; turnOn = false; sync(); });
+      bgmOn = !bgmOn;
+      targetVol = bgmOn ? 0.55 : 0;
+      if(bgmOn){
+        bgm.volume = 0;
+        bgm.play().then(function(){
+          if(!bgmOn) bgm.pause();
+        }).catch(function(){
+          bgmOn = false;
+          targetVol = 0;
+          sync();
+        });
+      }else{
+        bgm.pause();
+        bgm.volume = 0;
       }
       sync();
       function sync(){
-        btn.classList.toggle('on', turnOn);
-        btn.setAttribute('aria-pressed', String(turnOn));
-        btn.textContent = turnOn ? '♪ on' : '♪ off';
+        btn.classList.toggle('on', bgmOn);
+        btn.setAttribute('aria-pressed', String(bgmOn));
+        btn.textContent = bgmOn ? '♪ on' : '♪ off';
       }
     });
   })();
