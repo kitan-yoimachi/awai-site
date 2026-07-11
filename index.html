@@ -80,6 +80,9 @@
   [data-tod="ikai"] main, [data-tod="ikai"] .tod button{
     text-shadow: 0 0 8px rgba(10,12,42,.9), 0 1px 22px rgba(10,12,42,.8), 0 0 52px rgba(10,12,42,.55);
   }
+  [data-tod="ikai"] .outro p{
+    color: rgba(217,211,238,.74);
+  }
   [data-tod="evening"] main, [data-tod="evening"] header, [data-tod="evening"] .tod button, [data-tod="evening"] .tool{
     text-shadow: 0 0 18px rgba(80,42,52,.40), 0 1px 32px rgba(68,38,48,.26);
   }
@@ -597,10 +600,13 @@
       font-size: clamp(1.25rem, 6.5vw, 1.75rem);
       line-height: 1.75;
       letter-spacing: .16em;
-      text-indent: .16em;
+      text-indent: 0;
     }
     .outro h2 .mobile-line{
-      display: block;
+      display: table;
+      width: max-content;
+      margin-inline: auto;
+      padding-left: .16em;
       white-space: nowrap;
     }
     .outro h2 br{ display: none; }
@@ -704,7 +710,7 @@
   </section>
 
   <section class="outro" id="outro">
-    <h2 class="fade"><span class="mobile-line">なにも</span><span class="mobile-line">起こらないことが、</span><br><span class="mobile-line">いちばん贅沢な</span><span class="mobile-line">出来事になる。</span></h2>
+    <h2 class="fade"><span class="mobile-line">なにも</span><span class="mobile-line">起こらないことが</span><br><span class="mobile-line">いちばん贅沢な</span><span class="mobile-line">出来事になる。</span></h2>
     <p class="fade"><span>ここには目的も、通知も、</span><span>締切もありません。</span><span>ただ、空と水と、あなたの指先だけ。</span><span>朝も、昼も、夕暮れも、星の夜も。</span><span>そして、ここではないどこかも。</span></p>
   </section>
 
