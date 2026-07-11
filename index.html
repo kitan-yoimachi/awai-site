@@ -1371,12 +1371,49 @@
     var btn = document.getElementById('bgmBtn');
     var targetVol = 0;
     var bgmOn = false;
+    var audioCtx = null;
+    var sourceNode = null;
+    var gainNode = null;
+    var fadeTimer = 0;
     bgm.volume = 0;
     bgm.load();
     function rewind(){
       try{ bgm.currentTime = 0; }catch(e){}
     }
+    function ensureAudioGraph(){
+      if(gainNode) return true;
+      var AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if(!AudioCtx) return false;
+      try{
+        audioCtx = new AudioCtx();
+        sourceNode = audioCtx.createMediaElementSource(bgm);
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = 0;
+        sourceNode.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        bgm.volume = 1;
+        return true;
+      }catch(e){
+        audioCtx = null;
+        sourceNode = null;
+        gainNode = null;
+        return false;
+      }
+    }
+    function fadeGain(value, seconds){
+      var gain = gainNode.gain;
+      var now = audioCtx.currentTime;
+      if(typeof gain.cancelAndHoldAtTime === 'function'){
+        gain.cancelAndHoldAtTime(now);
+      }else{
+        var current = gain.value;
+        gain.cancelScheduledValues(now);
+        gain.setValueAtTime(current, now);
+      }
+      gain.linearRampToValueAtTime(value, now + seconds);
+    }
     setInterval(function(){
+      if(gainNode) return;
       var v = bgm.volume + (targetVol - bgm.volume) * 0.06;
       if(Math.abs(v - targetVol) < 0.005) v = targetVol;
       bgm.volume = v;
@@ -1388,15 +1425,31 @@
     btn.addEventListener('click', function(){
       bgmOn = !bgmOn;
       targetVol = bgmOn ? 0.55 : 0;
+      clearTimeout(fadeTimer);
       if(bgmOn){
         rewind();
+        if(ensureAudioGraph()){
+          audioCtx.resume();
+          fadeGain(0.55, 1.4);
+        }else{
+          bgm.volume = 0;
+        }
         bgm.play().then(function(){
           if(!bgmOn) targetVol = 0;
         }).catch(function(){
           bgmOn = false;
           targetVol = 0;
+          if(gainNode) fadeGain(0, 0.1);
           sync();
         });
+      }else if(gainNode){
+        fadeGain(0, 2.2);
+        fadeTimer = setTimeout(function(){
+          if(!bgmOn){
+            bgm.pause();
+            rewind();
+          }
+        }, 2300);
       }
       sync();
       function sync(){
