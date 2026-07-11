@@ -559,29 +559,29 @@
     }
     .experience{
       min-height: 100svh;
-      padding-top: clamp(5.4rem, 12svh, 6.5rem);
-      padding-bottom: calc(env(safe-area-inset-bottom) + clamp(7rem, 17svh, 8.5rem));
-      justify-content: center;
+      padding-top: calc(env(safe-area-inset-top) + 7.8rem);
+      padding-bottom: calc(env(safe-area-inset-bottom) + 12rem);
+      justify-content: flex-start;
     }
     .steps{
       flex-direction: column;
-      gap: clamp(.8rem, 2.5svh, 1.8rem);
-      margin-top: clamp(1rem, 2.8svh, 2rem);
+      gap: clamp(.5rem, 1.3svh, .75rem);
+      margin-top: clamp(.85rem, 2svh, 1.15rem);
       width: 100%;
     }
     .step{
       max-width: min(18rem, 100%);
       margin-inline: auto;
     }
-    .step .no{ font-size: .68rem; }
+    .step .no{ font-size: .62rem; }
     .step h3{
-      margin-top: .55em;
-      font-size: clamp(1.2rem, 5.5vw, 1.35rem);
+      margin-top: .25em;
+      font-size: clamp(1.15rem, 5.2vw, 1.3rem);
     }
     .step p{
-      margin-top: .65em;
+      margin-top: .35em;
       font-size: clamp(.76rem, 3.45vw, .82rem);
-      line-height: 1.85;
+      line-height: 1.6;
       letter-spacing: .08em;
     }
     .step p span, .outro p span{
@@ -595,10 +595,15 @@
     }
     .outro h2{
       font-size: clamp(1.25rem, 6.5vw, 1.75rem);
-      line-height: 1.9;
+      line-height: 1.75;
       letter-spacing: .16em;
       text-indent: .16em;
     }
+    .outro h2 .mobile-line{
+      display: block;
+      white-space: nowrap;
+    }
+    .outro h2 br{ display: none; }
     .outro p{
       margin-top: 2em;
       font-size: .76rem;
@@ -606,7 +611,7 @@
       letter-spacing: .07em;
     }
     footer{
-      padding: 2.5rem 1.25rem calc(env(safe-area-inset-bottom) + 9.5rem);
+      padding: 2.5rem 1.25rem calc(env(safe-area-inset-bottom) + 13.5rem);
     }
     footer .mark{
       font-size: .82rem;
@@ -699,7 +704,7 @@
   </section>
 
   <section class="outro" id="outro">
-    <h2 class="fade">なにも起こらないことが、<br>いちばん贅沢な出来事になる。</h2>
+    <h2 class="fade"><span class="mobile-line">なにも</span><span class="mobile-line">起こらないことが、</span><br><span class="mobile-line">いちばん贅沢な</span><span class="mobile-line">出来事になる。</span></h2>
     <p class="fade"><span>ここには目的も、通知も、</span><span>締切もありません。</span><span>ただ、空と水と、あなたの指先だけ。</span><span>朝も、昼も、夕暮れも、星の夜も。</span><span>そして、ここではないどこかも。</span></p>
   </section>
 
