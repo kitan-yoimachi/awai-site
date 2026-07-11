@@ -1373,31 +1373,30 @@
     var bgmOn = false;
     bgm.volume = 0;
     bgm.load();
+    function rewind(){
+      try{ bgm.currentTime = 0; }catch(e){}
+    }
     setInterval(function(){
-      if(!bgmOn){
-        if(!bgm.paused) bgm.pause();
-        bgm.volume = 0;
-        return;
-      }
       var v = bgm.volume + (targetVol - bgm.volume) * 0.06;
       if(Math.abs(v - targetVol) < 0.005) v = targetVol;
       bgm.volume = v;
+      if(!bgmOn && v === 0){
+        if(!bgm.paused) bgm.pause();
+        rewind();
+      }
     }, 50);
     btn.addEventListener('click', function(){
       bgmOn = !bgmOn;
       targetVol = bgmOn ? 0.55 : 0;
       if(bgmOn){
-        bgm.volume = 0;
+        rewind();
         bgm.play().then(function(){
-          if(!bgmOn) bgm.pause();
+          if(!bgmOn) targetVol = 0;
         }).catch(function(){
           bgmOn = false;
           targetVol = 0;
           sync();
         });
-      }else{
-        bgm.pause();
-        bgm.volume = 0;
       }
       sync();
       function sync(){
