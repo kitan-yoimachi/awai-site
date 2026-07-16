@@ -238,6 +238,11 @@
 
   /* ---------- text visibility: on / off ---------- */
   header, main, .tod, nav, section, footer{ transition: opacity 3s ease; }
+  body.nav-shifting main{
+    opacity: 0;
+    pointer-events: none;
+    transition-duration: .75s;
+  }
   /* off: nothing but sky and water */
   body.no-ui .hint{ animation: none; }
   body.no-ui header, body.no-ui main, body.no-ui .tod{
@@ -1363,13 +1368,16 @@
   var SECTS = ['.hero', '#concept', '#experience', '#outro', '#profile', 'footer']
     .map(function(s){ return document.querySelector(s); });
   var gliding = false;
+  var glideToken = 0;
   function sectTop(el){ return el.getBoundingClientRect().top + scrollY; }
   function glideTo(y){
     y = Math.max(0, Math.min(y, document.documentElement.scrollHeight - innerHeight));
     if(reduced){ window.scrollTo(0, y); return; }
     gliding = true;
+    var token = ++glideToken;
     var start = scrollY, dist = y - start, t0 = performance.now(), dur = 2800;
     function step(nowT){
+      if(token !== glideToken) return;
       var p = Math.min((nowT - t0) / dur, 1);
       var e = 0.5 - 0.5 * Math.cos(Math.PI * p);
       window.scrollTo(0, start + dist * e);
@@ -1397,11 +1405,37 @@
       glideTo(next === SECTS.length - 1 ? 1e9 : sectTop(SECTS[next]));
     }, { passive: false });
   }
+  var navJumpTimer = 0;
+  function fadeJumpTo(el){
+    clearTimeout(navJumpTimer);
+    glideToken++;
+    gliding = true;
+    if(reduced){
+      window.scrollTo(0, sectTop(el));
+      el.querySelectorAll('.fade').forEach(function(node){ node.classList.add('in'); });
+      gliding = false;
+      return;
+    }
+    document.body.classList.add('nav-shifting');
+    navJumpTimer = setTimeout(function(){
+      var fades = el.querySelectorAll('.fade');
+      fades.forEach(function(node){ node.classList.remove('in'); });
+      window.scrollTo(0, sectTop(el));
+      gliding = false;
+      void el.offsetHeight;
+      requestAnimationFrame(function(){
+        document.body.classList.remove('nav-shifting');
+        requestAnimationFrame(function(){
+          fades.forEach(function(node){ node.classList.add('in'); });
+        });
+      });
+    }, 760);
+  }
   document.querySelectorAll('nav a[href^="#"]').forEach(function(a){
     a.addEventListener('click', function(e){
       e.preventDefault();
       var el = document.querySelector(a.getAttribute('href'));
-      if(el) glideTo(sectTop(el));
+      if(el) fadeJumpTo(el);
     });
   });
 
