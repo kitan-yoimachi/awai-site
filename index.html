@@ -418,6 +418,76 @@
     font-weight: 300;
     color: var(--ink-soft);
   }
+
+  /* ---------- creator profile ---------- */
+  .profile{
+    min-height: 100svh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12vh 1.5rem 14rem;
+  }
+  .profile-inner{
+    width: min(46rem, 100%);
+  }
+  .profile .label{
+    text-align: left;
+    text-indent: 0;
+  }
+  .profile .label::after{
+    margin-left: 0;
+  }
+  .profile-copy{
+    margin-top: clamp(2.2rem, 5vh, 3.8rem);
+    max-width: 43rem;
+  }
+  .profile-copy h2{
+    font-family: var(--serif);
+    font-size: clamp(1.4rem, 2.4vw, 2rem);
+    font-weight: 400;
+    line-height: 1.8;
+    letter-spacing: .16em;
+    color: var(--ink-strong);
+  }
+  .profile-copy h2 span{
+    display: block;
+    margin-top: .45em;
+    font-family: var(--sans);
+    font-size: .68rem;
+    font-weight: 300;
+    letter-spacing: .28em;
+    color: var(--ink-faint);
+  }
+  .profile-copy p{
+    margin-top: 1.45em;
+    font-size: .78rem;
+    font-weight: 300;
+    line-height: 2.25;
+    letter-spacing: .1em;
+    color: var(--ink-soft);
+  }
+  .profile-links{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem clamp(1.4rem, 3vw, 2.5rem);
+    margin-top: clamp(2.2rem, 5vh, 3.5rem);
+  }
+  .profile-links a{
+    color: var(--ink);
+    text-decoration: none;
+    font-size: .68rem;
+    font-weight: 300;
+    letter-spacing: .16em;
+    padding-bottom: .35em;
+    border-bottom: 1px solid currentColor;
+    opacity: .72;
+    transition: opacity .8s ease, color 3s ease, border-color 3s ease;
+  }
+  .profile-links a:hover,
+  .profile-links a:focus-visible{
+    opacity: 1;
+  }
+
   footer{
     /* extra bottom room so the fixed switcher / bgm toggle never covers the text */
     padding: 3.5rem 1.5rem 10rem;
@@ -479,13 +549,13 @@
     .logo small{ font-size: .5rem; letter-spacing: .36em; }
     nav a span{ display:none; }
     nav{
-      gap: .85rem;
+      gap: .62rem;
       justify-content: flex-end;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
     }
     nav a{
-      font-size: .68rem;
-      letter-spacing: .14em;
+      font-size: .64rem;
+      letter-spacing: .1em;
     }
     .tools, .tod{
       left: 50%;
@@ -545,7 +615,7 @@
       display: block;
       white-space: nowrap;
     }
-    .concept, .experience, .outro{
+    .concept, .experience, .outro, .profile{
       min-height: auto;
       padding-left: 1.25rem;
       padding-right: 1.25rem;
@@ -620,6 +690,36 @@
       line-height: 2.15;
       letter-spacing: .07em;
     }
+    .profile{
+      padding-top: 7rem;
+      padding-bottom: calc(env(safe-area-inset-bottom) + 13.5rem);
+    }
+    .profile-copy{
+      margin-top: 2rem;
+    }
+    .profile-copy h2{
+      font-size: 1.25rem;
+      line-height: 1.7;
+      letter-spacing: .12em;
+    }
+    .profile-copy h2 span{
+      font-size: .62rem;
+      letter-spacing: .2em;
+    }
+    .profile-copy p{
+      margin-top: 1.25em;
+      font-size: .7rem;
+      line-height: 2.05;
+      letter-spacing: .07em;
+    }
+    .profile-links{
+      gap: 1rem 1.5rem;
+      margin-top: 2.25rem;
+    }
+    .profile-links a{
+      font-size: .64rem;
+      letter-spacing: .12em;
+    }
     footer{
       padding: 2.5rem 1.25rem calc(env(safe-area-inset-bottom) + 13.5rem);
     }
@@ -656,6 +756,7 @@
     <a href="#concept">概念<span>CONCEPT</span></a>
     <a href="#experience">体験<span>EXPERIENCE</span></a>
     <a href="#outro">結び<span>CLOSING</span></a>
+    <a href="#profile">制作<span>PROFILE</span></a>
   </nav>
 </header>
 
@@ -716,6 +817,27 @@
   <section class="outro" id="outro">
     <h2 class="fade"><span class="mobile-line">なにも</span><span class="mobile-line">起こらないことが</span><br><span class="mobile-line">いちばん贅沢な</span><span class="mobile-line">出来事になる。</span></h2>
     <p class="fade"><span>ここには目的も、通知も、</span><span>締切もありません。</span><span>ただ、空と水と、あなたの指先だけ。</span><span>朝も、昼も、夕暮れも、星の夜も。</span><span>そして、ここではないどこかも。</span></p>
+  </section>
+
+  <section class="profile" id="profile">
+    <div class="profile-inner">
+      <div class="label fade">制 作 &nbsp;PROFILE</div>
+      <div class="profile-copy fade">
+        <h2>宵待（よいまち）<span>Artist / Creator</span></h2>
+        <p>大阪を拠点に活動するクリエイター。</p>
+        <p>心理分野を学んだのち、カラーセラピーやパステルアートの講師を経て、抽象画家として10年以上活動。<br>東京・大阪・兵庫で個展を開催するほか、全国のグループ展や公募展に出展。<br>国立新美術館、韓国・ロッテホテルなどでの展示経験を持ち、国内外の公募展で入選・受賞歴がある。</p>
+        <p>現在は、AIビジュアル、小説、創作IP、音楽、Web制作など、表現領域を横断しながら活動。</p>
+        <p>媒体やジャンルにとらわれず、作品ごとに、ふさわしい表現の形を探っている。</p>
+      </div>
+      <div class="profile-links fade" role="navigation" aria-label="宵待のSNSリンク">
+        <a href="https://lit.link/yoimachi_midou" target="_blank" rel="noopener noreferrer">総合</a>
+        <a href="https://x.com/yoimachi_midou" target="_blank" rel="noopener noreferrer">X</a>
+        <a href="https://www.threads.com/@yoimachi_midou" target="_blank" rel="noopener noreferrer">Threads</a>
+        <a href="https://www.instagram.com/yoimachi_midou/" target="_blank" rel="noopener noreferrer">Instagram</a>
+        <a href="https://note.com/yoimachi_midou" target="_blank" rel="noopener noreferrer">note</a>
+        <a href="https://tales.note.com/yoimachi_midou" target="_blank" rel="noopener noreferrer">TALES</a>
+      </div>
+    </div>
   </section>
 
   <footer>
@@ -1238,7 +1360,7 @@
      wheel を乗っ取り、1回で次/前のセクションへ 2.8秒(dur=2800)かけて移動。
      モバイルはネイティブスクロール＋CSSスナップ。セクション追加時は SECTS へ。
      -------------------------------------------------------------------------- */
-  var SECTS = ['.hero', '#concept', '#experience', '#outro', 'footer']
+  var SECTS = ['.hero', '#concept', '#experience', '#outro', '#profile', 'footer']
     .map(function(s){ return document.querySelector(s); });
   var gliding = false;
   function sectTop(el){ return el.getBoundingClientRect().top + scrollY; }
